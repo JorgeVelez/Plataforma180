@@ -43,8 +43,8 @@ char user_input;
 ////////////////////////NETWORK/////////////////////////////////////////////
 
 // Replace with your network credentials
-const char* ssid = "PlataformaESP";
-const char* password = "11111111";
+const char* ssid = "Plataforma180";
+const char* password = "180180180";
 
 const char* PARAM_RELAYA = "relaya";
 const char* PARAM_RELAYB = "relayb";
