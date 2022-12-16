@@ -11,6 +11,10 @@
 #define enablePinStepper 16
 #define stepPinStepper 14
 
+IPAddress local_ip(192,168,0,1);
+IPAddress gateway(192,168,0,1);
+IPAddress subnet(255,255,255,0);
+
 #define isDebug true
 
 const int SensorComienzo = 23;
@@ -48,8 +52,8 @@ char user_input;
 const char* ssid = "Plataforma180";
 const char* password = "180180180";
 
-const char* ssid_debug = "ChosgangT";
-const char* password_debug = "Sonisgang2";
+const char* ssid_debug = "INFINITUMC651";//ChosgangT//INFINITUMC651
+const char* password_debug = "2Me4bbcEds";//Sonisgang2//2Me4bbcEds
 
 const char* PARAM_RELAYA = "relaya";
 const char* PARAM_RELAYB = "relayb";
@@ -284,14 +288,17 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       Serial.println("command PARAM_RUTINA ");
     }else if (strcmp((char*)data, PARAM_CALIBRA) == 0) {    
       state = CalibrateStart;
-      //delay(2000);
-      //notifyClients("calibrado");
+        if(isDebug){
+      delay(2000);
+      notifyClients("calibrado");
+        }
       Serial.println("command PARAM_CALIBRA ");
     }else if (strcmp((char*)data, PARAM_VELMAS) == 0) {    
       velocidad++;
       if(velocidad>10)
       velocidad=10;
       EEPROM.writeInt(addressVelocity, velocidad); 
+      EEPROM.commit();
        delay(100);
       notifyClients(String(velocidad));
       Serial.println("command PARAM_VELMAS ");
@@ -300,6 +307,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if(velocidad<0)
       velocidad=0;
        EEPROM.writeInt(addressVelocity, velocidad); 
+       EEPROM.commit();
        delay(100);
       notifyClients(String(velocidad));
       Serial.println("command PARAM_VELMAS ");
@@ -364,6 +372,8 @@ void setup(){
   // Serial port for debugging purposes
   Serial.begin(115200);
 
+  delay(3000);
+
   pinMode(ledPin, OUTPUT);
   digitalWrite(ledPin, LOW);
 
@@ -385,6 +395,7 @@ void setup(){
     // Print ESP Local IP Address
   Serial.println(WiFi.localIP());
   }else{
+    WiFi.softAPConfig(local_ip, gateway, subnet);
     WiFi.softAP(ssid, password);
   IPAddress myIP = WiFi.softAPIP();
   Serial.print("AP IP address: ");
@@ -398,6 +409,11 @@ if (!EEPROM.begin(1000)) {
     ESP.restart();
   }
    velocidad=EEPROM.readInt(addressVelocity);
+   if(velocidad<1){
+    EEPROM.writeInt(addressVelocity, 1); 
+      EEPROM.commit();
+      velocidad=EEPROM.readInt(addressVelocity);
+   }
  Serial.print("La velocidad guardada es: ");
   Serial.println(velocidad);
 
