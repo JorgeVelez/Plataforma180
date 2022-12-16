@@ -4,6 +4,7 @@
 #include <ESPAsyncWebServer.h>
 #include <SPIFFS.h>
 #include "FastAccelStepper.h"
+#include "EEPROM.h"
 
 //////////////////////////CONTROL///////////////////////////////////////
 #define dirPinStepper 12
@@ -32,7 +33,12 @@ const int Calibrated = 10;
 const int Iddle = -1;
 int velocidad=1;
 
+/////////////////////////////EEPROM////////////////////////////
+int addressVelocity = 0;
+#define EEPROM_SIZE 64
 
+
+////////////////////////////STEPPER////////////////////////////
 FastAccelStepperEngine engine = FastAccelStepperEngine();
 FastAccelStepper *stepper = NULL;
 
@@ -285,13 +291,16 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       velocidad++;
       if(velocidad>10)
       velocidad=10;
-      //aqui modificar velocidad
+      EEPROM.writeInt(addressVelocity, velocidad); 
+       delay(100);
       notifyClients(String(velocidad));
       Serial.println("command PARAM_VELMAS ");
     }else if (strcmp((char*)data, PARAM_VELMENOS) == 0) {    
       velocidad--;
       if(velocidad<0)
       velocidad=0;
+       EEPROM.writeInt(addressVelocity, velocidad); 
+       delay(100);
       notifyClients(String(velocidad));
       Serial.println("command PARAM_VELMAS ");
     }else if (strcmp((char*)data, PARAM_RELAYA) == 0) {
@@ -309,13 +318,13 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
 }
 
 void MueveAPosInicial() {
-  stepper->setSpeedInUs(1000);
+  stepper->setSpeedInUs(500*velocidad);
       stepper->setAcceleration(500);
       stepper->moveTo(-200);
 }
 
 void MueveAPosFinal() {
-  stepper->setSpeedInUs(1000);
+  stepper->setSpeedInUs(500*velocidad);
       stepper->setAcceleration(500);
       stepper->moveTo(PosicionFinal+200);
 }
@@ -382,10 +391,15 @@ void setup(){
   Serial.println(myIP);
   }
 
-    
-
-
-  
+if (!EEPROM.begin(1000)) {
+    Serial.println("Failed to initialise EEPROM");
+    Serial.println("Restarting...");
+    delay(1000);
+    ESP.restart();
+  }
+   velocidad=EEPROM.readInt(addressVelocity);
+ Serial.print("La velocidad guardada es: ");
+  Serial.println(velocidad);
 
   if(!SPIFFS.begin()){
         Serial.println("An Error has occurred while mounting SPIFFS");
@@ -411,13 +425,13 @@ void setup(){
   //Print function list for user selection
   Serial.println("Opciones por serial:");
   Serial.println("a. calibrar.");
+  Serial.println("r. rutina.");
   Serial.println("<. movimiento adelante.");
   Serial.println(">. movimiento de regreso.");
   Serial.println("s. stop abrupto.");
   Serial.println("1. toggle relay 1.");
   Serial.println("2. toggle relay 2.");
-  Serial.println("c. mover inmediatamente counterclockwise.");
-  Serial.println("w. mover inmediatamente clockwise.");
+
   Serial.println();
 
   pinMode(SensorComienzo, INPUT);
@@ -519,7 +533,7 @@ void loop() {
     }
   }else if (state == Rutina)
   {
-    if(stepper->getPositionAfterCommandsCompleted()<= stepper->getCurrentPosition()){
+    if(stepper->getPositionAfterCommandsCompleted()<=  stepper->getCurrentPosition()){
       MueveAPosInicial();
       state = Moviendo;
     }
@@ -538,32 +552,23 @@ void loop() {
 
   while (Serial.available()) {
     user_input = Serial.read(); //Read user input and trigger appropriate function
-    if (user_input == 'c')
-    {
-      //counterclockwise
-      stepper->runForward();
-    }
-    else if (user_input == 'w')
-    {
-      //clockwise
-      stepper->runBackward();
-    }
-    else if (user_input == 's')
+if (user_input == 's')
     {
 
       stepper->forceStop();
     }
     else if (user_input == '<')
     {
-        stepper->setSpeedInUs(1000);
-      stepper->setAcceleration(500);
-      stepper->moveTo(-200);
+        state= Moviendo;
+      MueveAPosFinal();
+      Serial.println("command PARAM_AVANZA ");
+   
     }
     else if (user_input == '>')
     {
-      stepper->setSpeedInUs(1000);
-      stepper->setAcceleration(500);
-      stepper->moveTo(PosicionFinal+200);
+        state= Moviendo;
+      MueveAPosInicial();
+      Serial.println("command PARAM_RETROCEDE ");
     }
     else if (user_input == 'a')
     {
@@ -576,6 +581,10 @@ void loop() {
     {
             digitalWrite(Relay2, !digitalRead(Relay2));
     }
+     else if (user_input == 'r')
+    {
+      state= Rutina;
+       MueveAPosFinal();}
     else
     {
       //Serial.println("Invalid option entered.");
