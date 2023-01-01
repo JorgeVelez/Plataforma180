@@ -11,11 +11,11 @@
 #define enablePinStepper 16
 #define stepPinStepper 14
 
-IPAddress local_ip(192,168,0,1);
-IPAddress gateway(192,168,0,1);
-IPAddress subnet(255,255,255,0);
+IPAddress local_ip(192, 168, 0, 1);
+IPAddress gateway(192, 168, 0, 1);
+IPAddress subnet(255, 255, 255, 0);
 
-#define isDebug true
+#define isDebug false
 
 const int SensorComienzo = 23;
 const int SensorFinal = 21;
@@ -24,6 +24,14 @@ const int Relay1 = 32;
 const int Relay2 = 33;
 
 int PosicionFinal = 0;
+int HomePosition = 0;
+
+int velocidadSecuencia = 500;
+int aceleracionSecuencia = 4000;
+
+int velocidadCalibrar = 500;
+int aceleracionCalibrar = 4000;
+
 
 int state;
 const int CalibrateStart = 1;
@@ -31,16 +39,18 @@ const int LookingForZero = 2;
 const int LookingForEnd = 3;
 const int BuscandoHome = 4;
 const int Moviendo = 5;
-const int Rutina = 6;
+const int RutinaHaciaHome = 6;
+const int RutinaHaciaFinal = 7;
 
 const int Calibrated = 10;
 const int Iddle = -1;
-int velocidad=1;
+int velocidad = 1;
+
+String posicionActial = "sincalibrar";
 
 /////////////////////////////EEPROM////////////////////////////
 int addressVelocity = 0;
 #define EEPROM_SIZE 64
-
 
 ////////////////////////////STEPPER////////////////////////////
 FastAccelStepperEngine engine = FastAccelStepperEngine();
@@ -283,8 +293,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       MueveAPosInicial();
       Serial.println("command PARAM_RETROCEDE ");
     }else if (strcmp((char*)data, PARAM_RUTINA) == 0) {
-      state= Rutina;
-       MueveAPosFinal();
+       //EmpiezaRutina();
+       state = CalibrateStart;
       Serial.println("command PARAM_RUTINA ");
     }else if (strcmp((char*)data, PARAM_CALIBRA) == 0) {    
       state = CalibrateStart;
@@ -304,8 +314,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       Serial.println("command PARAM_VELMAS ");
     }else if (strcmp((char*)data, PARAM_VELMENOS) == 0) {    
       velocidad--;
-      if(velocidad<0)
-      velocidad=0;
+      if(velocidad<1)
+      velocidad=1;
        EEPROM.writeInt(addressVelocity, velocidad); 
        EEPROM.commit();
        delay(100);
@@ -325,16 +335,38 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
   }
 }
 
+void EmpiezaRutina() {
+
+    if(posicionActial=="enfinal"){
+      Serial.println(posicionActial);
+      Serial.println("EmpiezaRutina ");
+      MueveAPosInicial();
+      state= RutinaHaciaHome;
+       
+    }else if(posicionActial=="eninicio"){
+      Serial.println(posicionActial);
+      Serial.println("EmpiezaRutina ");
+      MueveAPosFinal();
+      state= RutinaHaciaFinal;
+      
+    }
+}
+
 void MueveAPosInicial() {
-  stepper->setSpeedInUs(500*velocidad);
-      stepper->setAcceleration(500);
-      stepper->moveTo(-200);
+  Serial.println("MueveAPosInicial ");
+  posicionActial="eninicio";
+  stepper->setSpeedInUs(velocidadSecuencia);
+      stepper->setAcceleration(aceleracionSecuencia);
+      stepper->moveTo(HomePosition);
 }
 
 void MueveAPosFinal() {
-  stepper->setSpeedInUs(500*velocidad);
-      stepper->setAcceleration(500);
-      stepper->moveTo(PosicionFinal+200);
+          Serial.println("MueveAPosFinal ");
+
+  posicionActial="enfinal";
+  stepper->setSpeedInUs(velocidadSecuencia);
+      stepper->setAcceleration(aceleracionSecuencia);
+  stepper->moveTo(PosicionFinal);
 }
 
 void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type,
@@ -454,16 +486,17 @@ if (!EEPROM.begin(1000)) {
   pinMode(SensorFinal, INPUT);
 
   pinMode(Relay1, OUTPUT);
+    pinMode(Relay2, OUTPUT);
 
   engine.init();
   stepper = engine.stepperConnectToPin(stepPinStepper);
   if (stepper) {
     stepper->setDirectionPin(dirPinStepper);
     stepper->setEnablePin(enablePinStepper);
-    stepper->setAutoEnable(true);
+    //stepper->setAutoEnable(true);
 
     // If auto enable/disable need delays, just add (one or both):
-    // stepper->setDelayToEnable(50);
+     //stepper->setDelayToEnable(50);
     // stepper->setDelayToDisable(1000);
 
     stepper->setSpeedInUs(500);
@@ -479,14 +512,16 @@ digitalWrite(Relay2, LOW);
 }
 
 void loop() {
+
+
   ws.cleanupClients();
    if (state == CalibrateStart)
   {
     if (digitalRead(SensorComienzo) == LOW)
     {
       //brazo esta en pos inicial, zerow, buscar pos final
-      stepper->setSpeedInUs(500);  // the parameter is us/step !!!
-      stepper->setAcceleration(100);
+      stepper->setSpeedInUs(velocidadCalibrar+(velocidad*50));  // the parameter is us/step !!!
+      stepper->setAcceleration(aceleracionCalibrar);
       stepper->runBackward();
       state = LookingForZero;
       Serial.print("CalibrateStart LOW");
@@ -494,22 +529,23 @@ void loop() {
     else
     {
       //buscar pos inicial
-      stepper->setSpeedInUs(500);  // the parameter is us/step !!!
-      stepper->setAcceleration(100);
+      stepper->setSpeedInUs(velocidadCalibrar+(velocidad*50));  // the parameter is us/step !!!
+      stepper->setAcceleration(aceleracionCalibrar);
       stepper->runForward();
       
       state = BuscandoHome;
       Serial.print("CalibrateStart HIGH");
     }
-
-    
   } else if (state == LookingForZero)
   {
     if (digitalRead(SensorComienzo) == HIGH)
     {
-      stepper->setCurrentPosition(0);
+      //stepper->setCurrentPosition(0);
+      HomePosition=stepper->getCurrentPosition();
       state = LookingForEnd;
       Serial.print("LookingForZero HIGH");
+      Serial.print("home position:>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> ");
+      Serial.println(HomePosition);
     }
   }
    else if (state == LookingForEnd)
@@ -517,20 +553,20 @@ void loop() {
     Serial.println("LookingForEnd");
     if (digitalRead(SensorFinal) == LOW)
     {
+          Serial.println("PosicionFinal guardada");
+              Serial.println(PosicionFinal);
+
+
       PosicionFinal=stepper->getCurrentPosition();
-      stepper->forceStop();
-      state = Calibrated;
-            Serial.print("LookingForZero LOW");
+      stepper->stopMove();
+       Serial.print("PosicionFinal:>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> ");
+      Serial.println(PosicionFinal);
+      state = Iddle;
+    posicionActial="enfinal";
+    Serial.println("Done");
+    notifyClients("calibrado");
 
     }
-  }
-  else if (state == Calibrated)
-  {
-    state = Iddle;
-    Serial.println("Done");
-    Serial.print("Posicion final: ");
-    Serial.println(PosicionFinal);
-    notifyClients("calibrado");
   }
   else if (state == BuscandoHome)
   {
@@ -538,25 +574,35 @@ void loop() {
 
     if (digitalRead(SensorComienzo) == LOW)
     {
-      stepper->forceStop();
+      stepper->stopMove();
 
-      stepper->setSpeedInUs(500);
-      stepper->setAcceleration(100);
+      stepper->setSpeedInUs(velocidadCalibrar+(velocidad*50));  // the parameter is us/step !!!
+      stepper->setAcceleration(aceleracionCalibrar);
       stepper->runBackward();
       state = LookingForZero;
       Serial.print("BuscandoHome LOW");
 
     }
-  }else if (state == Rutina)
+  }else if (state == RutinaHaciaHome)
   {
-    if(stepper->getPositionAfterCommandsCompleted()<=  stepper->getCurrentPosition()){
-      MueveAPosInicial();
+    if(stepper->getCurrentPosition()>=HomePosition){
+      MueveAPosFinal();
+          Serial.println("1ra parte de RutinaHaciaHome completa");
+
+      state = Moviendo;
+    }
+  }else if (state == RutinaHaciaFinal)
+  {
+    if( stepper->getCurrentPosition()<=PosicionFinal){
+       MueveAPosInicial();
+      Serial.println("1ra parte de RutinaHaciaFinal completa");
+
       state = Moviendo;
     }
   }
 
   if (stepper) {
-    if (stepper->isRunning()) {
+    if (stepper->isRunning() && (state ==Moviendo)) {
       //Serial.print("@");
       //Serial.println(stepper->getCurrentPosition());
     }
@@ -599,9 +645,8 @@ if (user_input == 's')
     }
      else if (user_input == 'r')
     {
-      state= Rutina;
-       MueveAPosFinal();}
-    else
+     EmpiezaRutina();
+    }else
     {
       //Serial.println("Invalid option entered.");
     }
