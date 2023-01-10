@@ -15,7 +15,7 @@ IPAddress local_ip(192,168,0,1);
 IPAddress gateway(192,168,0,1);
 IPAddress subnet(255,255,255,0);
 
-#define isDebug true
+#define isDebug false
 
 const int SensorComienzo = 23;
 const int SensorFinal = 21;
@@ -24,6 +24,13 @@ const int Relay1 = 32;
 const int Relay2 = 33;
 
 int PosicionFinal = 0;
+int PosicionInicial = 0;
+
+int velocidadSecuencia = 500;
+int aceleracionSecuencia = 4000;
+
+int velocidadCalibrar = 500;
+int aceleracionCalibrar = 4000;
 
 int state;
 const int CalibrateStart = 1;
@@ -325,16 +332,18 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
   }
 }
 
+
+
 void MueveAPosInicial() {
-  stepper->setSpeedInUs(500*velocidad);
-      stepper->setAcceleration(500);
-      stepper->moveTo(-200);
+  stepper->setSpeedInUs(velocidadSecuencia);
+      stepper->setAcceleration(aceleracionSecuencia);
+      stepper->moveTo(PosicionInicial);
 }
 
 void MueveAPosFinal() {
-  stepper->setSpeedInUs(500*velocidad);
-      stepper->setAcceleration(500);
-      stepper->moveTo(PosicionFinal+200);
+  stepper->setSpeedInUs(velocidadSecuencia);
+      stepper->setAcceleration(aceleracionSecuencia);
+      stepper->moveTo(PosicionFinal);
 }
 
 void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type,
@@ -460,7 +469,8 @@ if (!EEPROM.begin(1000)) {
   if (stepper) {
     stepper->setDirectionPin(dirPinStepper);
     stepper->setEnablePin(enablePinStepper);
-    stepper->setAutoEnable(true);
+    //stepper->setAutoEnable(true);
+     stepper->enableOutputs();
 
     // If auto enable/disable need delays, just add (one or both):
     // stepper->setDelayToEnable(50);
@@ -485,21 +495,21 @@ void loop() {
     if (digitalRead(SensorComienzo) == LOW)
     {
       //brazo esta en pos inicial, zerow, buscar pos final
-      stepper->setSpeedInUs(500);  // the parameter is us/step !!!
-      stepper->setAcceleration(100);
+      stepper->setSpeedInUs(velocidadCalibrar);  // the parameter is us/step !!!
+      stepper->setAcceleration(aceleracionCalibrar);
       stepper->runBackward();
       state = LookingForZero;
-      Serial.print("CalibrateStart LOW");
+      Serial.println("CalibrateStart LOW");
     }
     else
     {
       //buscar pos inicial
-      stepper->setSpeedInUs(500);  // the parameter is us/step !!!
-      stepper->setAcceleration(100);
+      stepper->setSpeedInUs(velocidadCalibrar);  // the parameter is us/step !!!
+      stepper->setAcceleration(aceleracionCalibrar);
       stepper->runForward();
       
       state = BuscandoHome;
-      Serial.print("CalibrateStart HIGH");
+      Serial.println("CalibrateStart HIGH");
     }
 
     
@@ -507,20 +517,21 @@ void loop() {
   {
     if (digitalRead(SensorComienzo) == HIGH)
     {
-      stepper->setCurrentPosition(0);
+      //stepper->setCurrentPosition(0);
+      Serial.println("encontro posicion 0 LookingForZeroHIGH: ");
+      Serial.println(stepper->getCurrentPosition());
       state = LookingForEnd;
-      Serial.print("LookingForZero HIGH");
     }
   }
    else if (state == LookingForEnd)
   {
-    Serial.println("LookingForEnd");
+    //Serial.println("LookingForEnd");
     if (digitalRead(SensorFinal) == LOW)
     {
       PosicionFinal=stepper->getCurrentPosition();
-      stepper->forceStop();
+      stepper->stopMove();
       state = Calibrated;
-            Serial.print("LookingForZero LOW");
+            Serial.println("LookingForZero LOW");
 
     }
   }
@@ -538,13 +549,13 @@ void loop() {
 
     if (digitalRead(SensorComienzo) == LOW)
     {
-      stepper->forceStop();
+      stepper->stopMove();
 
-      stepper->setSpeedInUs(500);
-      stepper->setAcceleration(100);
+      stepper->setSpeedInUs(velocidadCalibrar);
+      stepper->setAcceleration(aceleracionCalibrar);
       stepper->runBackward();
       state = LookingForZero;
-      Serial.print("BuscandoHome LOW");
+      Serial.println("BuscandoHome LOW");
 
     }
   }else if (state == Rutina)
@@ -571,7 +582,7 @@ void loop() {
 if (user_input == 's')
     {
 
-      stepper->forceStop();
+      stepper->stopMove();
     }
     else if (user_input == '<')
     {
