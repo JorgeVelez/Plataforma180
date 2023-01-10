@@ -43,7 +43,7 @@ const int Moviendo = 5;
 const int Rutina = 6;
 
 const int Iddle = -1;
-int velocidad = 7;
+int velocidad = 6;
 
 unsigned long StartTime = 0;
 
@@ -338,8 +338,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       Serial.println(velocidad);
     }else if (strcmp((char*)data, PARAM_VELMENOS) == 0) {    
       velocidad--;
-      if(velocidad<5)
-      velocidad=5;
+      if(velocidad<6)
+      velocidad=6;
        EEPROM.writeInt(addressVelocity, velocidad); 
        EEPROM.commit();
        delay(100);
