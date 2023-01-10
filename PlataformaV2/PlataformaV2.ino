@@ -40,8 +40,7 @@ const int LookingForZero = 2;
 const int LookingForEnd = 3;
 const int BuscandoHome = 4;
 const int Moviendo = 5;
-const int RutinaHaciaHome = 6;
-const int RutinaHaciaFinal = 7;
+const int Rutina = 6;
 
 const int Iddle = -1;
 int velocidad = 5;
@@ -52,6 +51,7 @@ unsigned long StartTime = 0;
 /////////////////////////////EEPROM////////////////////////////
 int addressVelocity = 0;
 #define EEPROM_SIZE 64
+
 
 ////////////////////////////STEPPER////////////////////////////
 FastAccelStepperEngine engine = FastAccelStepperEngine();
@@ -359,23 +359,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
   }
 }
 
-void EmpiezaRutina() {
-
-    if(posicionActial=="enfinal"){
-      Serial.println(posicionActial);
-      Serial.println("EmpiezaRutina ");
-      MueveAPosInicial();
-      state= RutinaHaciaHome;
-       
-    }else if(posicionActial=="eninicio"){
-      Serial.println(posicionActial);
-      Serial.println("EmpiezaRutina ");
-      MueveAPosFinal();
-      state= RutinaHaciaFinal;
-      
-    }
-}
-
 void MueveAPosInicial() {
   Serial.println("MueveAPosInicial ");
   stepper->setSpeedInUs(velocidadSecuencia-((10-velocidad)*90));
@@ -504,7 +487,6 @@ if (!EEPROM.begin(1000)) {
   pinMode(SensorFinal, INPUT);
 
   pinMode(Relay1, OUTPUT);
-    pinMode(Relay2, OUTPUT);
 
   engine.init();
   stepper = engine.stepperConnectToPin(stepPinStepper);
@@ -515,7 +497,7 @@ if (!EEPROM.begin(1000)) {
      stepper->enableOutputs();
 
     // If auto enable/disable need delays, just add (one or both):
-     //stepper->setDelayToEnable(50);
+    // stepper->setDelayToEnable(50);
     // stepper->setDelayToDisable(1000);
 
     stepper->setSpeedInUs(500);
@@ -531,8 +513,6 @@ digitalWrite(Relay2, LOW);
 }
 
 void loop() {
-
-
   ws.cleanupClients();
    if (state == CalibrateStart)
   {
@@ -596,7 +576,7 @@ void loop() {
       state = LookingForZero;
       Serial.println("BuscandoHome LOW");
     }
-  }else if (state == RutinaHaciaHome)
+  }else if (state == Rutina)
   {
     if(!estaEnInicio){
     //Serial.print("diff: ");
@@ -620,7 +600,7 @@ void loop() {
   }
 
   if (stepper) {
-    if (stepper->isRunning() && (state ==Moviendo)) {
+    if (stepper->isRunning()) {
       //Serial.print("@");
       //Serial.println(stepper->getCurrentPosition());
     }
