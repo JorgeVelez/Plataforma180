@@ -28,7 +28,7 @@ int PosicionInicial = 0;
 
 bool estaEnInicio = false;
 
-int velocidadSecuencia = 600;
+int velocidadSecuencia = 900;
 int aceleracionSecuencia = 4000;
 
 int velocidadCalibrar = 500;
@@ -43,7 +43,7 @@ const int Moviendo = 5;
 const int Rutina = 6;
 
 const int Iddle = -1;
-int velocidad = 5;
+int velocidad = 7;
 
 unsigned long StartTime = 0;
 
@@ -328,8 +328,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       Serial.println("command PARAM_CALIBRA ");
     }else if (strcmp((char*)data, PARAM_VELMAS) == 0) {    
       velocidad++;
-      if(velocidad>10)
-      velocidad=10;
+      if(velocidad>15)
+      velocidad=15;
       EEPROM.writeInt(addressVelocity, velocidad); 
       EEPROM.commit();
        delay(100);
@@ -361,14 +361,14 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
 
 void MueveAPosInicial() {
   Serial.println("MueveAPosInicial ");
-  stepper->setSpeedInUs(velocidadSecuencia-((10-velocidad)*90));
+  stepper->setSpeedInUs(velocidadSecuencia-((15-velocidad)*90));
       stepper->setAcceleration(aceleracionSecuencia);
       stepper->moveTo(PosicionInicial);
 }
 
 void MueveAPosFinal() {
   Serial.println("MueveAPosFinal ");
-  stepper->setSpeedInUs(velocidadSecuencia-((10-velocidad)*90));
+  stepper->setSpeedInUs(velocidadSecuencia-((15-velocidad)*90));
       stepper->setAcceleration(aceleracionSecuencia);
       stepper->moveTo(PosicionFinal);
 }
@@ -450,7 +450,7 @@ if (!EEPROM.begin(1000)) {
 
   if(!SPIFFS.begin()){
         Serial.println("An Error has occurred while mounting SPIFFS");
-        return;
+        //return;
   }
 
   initWebSocket();
