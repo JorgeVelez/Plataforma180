@@ -24,14 +24,15 @@ const int Relay1 = 32;
 const int Relay2 = 33;
 
 int PosicionFinal = 0;
-int HomePosition = 0;
+int PosicionInicial = 0;
 
-int velocidadSecuencia = 500;
+bool estaEnInicio = false;
+
+int velocidadSecuencia = 600;
 int aceleracionSecuencia = 4000;
 
 int velocidadCalibrar = 500;
 int aceleracionCalibrar = 4000;
-
 
 int state;
 const int CalibrateStart = 1;
@@ -42,11 +43,11 @@ const int Moviendo = 5;
 const int RutinaHaciaHome = 6;
 const int RutinaHaciaFinal = 7;
 
-const int Calibrated = 10;
 const int Iddle = -1;
-int velocidad = 1;
+int velocidad = 5;
 
-String posicionActial = "sincalibrar";
+unsigned long StartTime = 0;
+
 
 /////////////////////////////EEPROM////////////////////////////
 int addressVelocity = 0;
@@ -69,7 +70,7 @@ const char* PARAM_RELAYA = "relaya";
 const char* PARAM_RELAYB = "relayb";
 
 const char* PARAM_AVANZA = "avanza";
-const char* PARAM_RETROCEDE = "retrocede";
+const char* PARAM_PARAR = "parar";
 const char* PARAM_CALIBRA = "calibra";
 const char* PARAM_RUTINA = "rutina";
 const char* PARAM_VELMAS = "velmas";
@@ -141,6 +142,16 @@ const char index_html[] PROGMEM = R"rawliteral(
     border: none;
     border-radius: 5px;
    }
+     .buttonP {
+    padding: 15px 50px;
+    font-size: 24px;
+    text-align: center;
+    outline: none;
+    color: #fff;
+    background-color: #FF0000;
+    border: none;
+    border-radius: 5px;
+   }
      .buttonS {
     padding: 15px 50px;
     font-size: 24px;
@@ -185,15 +196,16 @@ const char index_html[] PROGMEM = R"rawliteral(
   <div class="content">
     <div>
       <p class="state" style="display:none" id="textoCalibrando">Calibrando...</p>
-      <p><button id="buttonC" class="buttonC">CALIBRAR</button></p>
-      <p><button style="display:none" id="buttonA" class="buttonA">AVANZAR</button></p>
-      <p><button style="display:none" id="buttonR" class="buttonA">RETROCEDER</button></p>
       <p><button style="display:none" id="buttonU" class="buttonA">RUTINA</button></p>
-      <p class="state" style="display:none" id="textoVel">Velocidad: <span  id="state">%VEL%</span></p>
+      <p class="state" style="display:none" id="textoVel">Velocidad: <span  id="state">%VEL%s</span></p>
       <p><button style="display:none" id="buttonVmas" class="buttonV">+</button></p>
       <p><button style="display:none" id="buttonVmenos" class="buttonV">-</button></p>
+      <p><button style="display:none" id="buttonA" class="buttonA">CAMBIO LADO</button></p>
+      <p><button style="display:none" id="buttonP" class="buttonP">PARAR</button></p>
       <p><button style="display:none" id="buttonS1" class="buttonS">SWITCH1</button></p>
       <p><button style="display:none" id="buttonS2" class="buttonS">SWITCH2</button></p>
+      <p><button id="buttonC" class="buttonC">CALIBRAR</button></p>
+
     </div>
   </div>
 <script>
@@ -201,7 +213,7 @@ var PARAM_RELAYA = "relaya";
 var PARAM_RELAYB = "relayb";
 
 var PARAM_AVANZA = "avanza";
-var PARAM_RETROCEDE = "retrocede";
+var PARAM_PARAR = "parar";
 var PARAM_CALIBRA = "calibra";
 
 var PARAM_RUTINA = "rutina";
@@ -230,7 +242,7 @@ var PARAM_VELMENOS = "velmenos";
     if (event.data == "calibrado"){
       
      document.getElementById('buttonA').style.display = 'inline';
-    document.getElementById('buttonR').style.display = 'inline';
+     document.getElementById('buttonP').style.display = 'inline';
     document.getElementById('buttonU').style.display = 'inline';
     document.getElementById('buttonS1').style.display = 'inline';
     document.getElementById('buttonS2').style.display = 'inline';
@@ -238,22 +250,21 @@ var PARAM_VELMENOS = "velmenos";
     document.getElementById('buttonVmas').style.display = 'inline';
     document.getElementById('textoVel').style.display = 'inline';
      document.getElementById('textoCalibrando').style.display = 'none';
+     document.getElementById('buttonC').style.display = 'inline';
     }
     else{
-      document.getElementById('state').innerHTML = event.data;
+      document.getElementById('state').innerHTML = event.data+"s";
     }
-    
   }
   
   function onLoad(event) {
     initButtonS();
     initWebSocket();
-    
   }
   function initButtonS() {
     document.getElementById('buttonC').addEventListener('click', () => { buttonHandler(PARAM_CALIBRA) });
     document.getElementById('buttonA').addEventListener('click', () => { buttonHandler(PARAM_AVANZA) });
-    document.getElementById('buttonR').addEventListener('click', () => { buttonHandler(PARAM_RETROCEDE) });
+    document.getElementById('buttonP').addEventListener('click', () => { buttonHandler(PARAM_PARAR) });
     document.getElementById('buttonU').addEventListener('click', () => { buttonHandler(PARAM_RUTINA) });
     document.getElementById('buttonS1').addEventListener('click', () => { buttonHandler(PARAM_RELAYA) });
     document.getElementById('buttonS2').addEventListener('click', () => { buttonHandler(PARAM_RELAYB) });
@@ -267,7 +278,6 @@ var PARAM_VELMENOS = "velmenos";
       document.getElementById('buttonC').style.display = 'none';
       document.getElementById('textoCalibrando').style.display = 'inline';
     }
-
     console.log('msg:'+msg);
   }
 </script>
@@ -286,15 +296,28 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     //aqui notificas y haces cambio de hardware
     if (strcmp((char*)data, PARAM_AVANZA) == 0) {
       state= Moviendo;
-      MueveAPosFinal();
+      if(!estaEnInicio){
+        estaEnInicio=true;
+        MueveAPosInicial();
+      }else{
+        estaEnInicio=false;
+        MueveAPosFinal();
+      }
       Serial.println("command PARAM_AVANZA ");
-    }else if (strcmp((char*)data, PARAM_RETROCEDE) == 0) {
-      state= Moviendo;
-      MueveAPosInicial();
-      Serial.println("command PARAM_RETROCEDE ");
+    }if (strcmp((char*)data, PARAM_PARAR) == 0) {
+      stepper->forceStop();
+      state = Iddle;
+      Serial.println("command PARAM_PARAR ");
     }else if (strcmp((char*)data, PARAM_RUTINA) == 0) {
-       //EmpiezaRutina();
-       state = CalibrateStart;
+      state= Rutina;
+      StartTime = millis();
+      Serial.print("estaEnInicio: ");
+      Serial.println(estaEnInicio);
+       if(!estaEnInicio){
+        MueveAPosInicial();
+      }else{
+        MueveAPosFinal();
+      }
       Serial.println("command PARAM_RUTINA ");
     }else if (strcmp((char*)data, PARAM_CALIBRA) == 0) {    
       state = CalibrateStart;
@@ -312,15 +335,17 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
        delay(100);
       notifyClients(String(velocidad));
       Serial.println("command PARAM_VELMAS ");
+      Serial.println(velocidad);
     }else if (strcmp((char*)data, PARAM_VELMENOS) == 0) {    
       velocidad--;
-      if(velocidad<1)
-      velocidad=1;
+      if(velocidad<5)
+      velocidad=5;
        EEPROM.writeInt(addressVelocity, velocidad); 
        EEPROM.commit();
        delay(100);
       notifyClients(String(velocidad));
-      Serial.println("command PARAM_VELMAS ");
+      Serial.println("command PARAM_VELMENOS ");
+      Serial.println(velocidad);
     }else if (strcmp((char*)data, PARAM_RELAYA) == 0) {
       digitalWrite(Relay1, !digitalRead(Relay1));
       Serial.println("command PARAM_RELAYA ");
@@ -331,7 +356,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     else {
       Serial.println("command unknown ");
     }
-
   }
 }
 
@@ -354,19 +378,16 @@ void EmpiezaRutina() {
 
 void MueveAPosInicial() {
   Serial.println("MueveAPosInicial ");
-  posicionActial="eninicio";
-  stepper->setSpeedInUs(velocidadSecuencia);
+  stepper->setSpeedInUs(velocidadSecuencia-((10-velocidad)*90));
       stepper->setAcceleration(aceleracionSecuencia);
-      stepper->moveTo(HomePosition);
+      stepper->moveTo(PosicionInicial);
 }
 
 void MueveAPosFinal() {
-          Serial.println("MueveAPosFinal ");
-
-  posicionActial="enfinal";
-  stepper->setSpeedInUs(velocidadSecuencia);
+  Serial.println("MueveAPosFinal ");
+  stepper->setSpeedInUs(velocidadSecuencia-((10-velocidad)*90));
       stepper->setAcceleration(aceleracionSecuencia);
-  stepper->moveTo(PosicionFinal);
+      stepper->moveTo(PosicionFinal);
 }
 
 void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type,
@@ -441,11 +462,6 @@ if (!EEPROM.begin(1000)) {
     ESP.restart();
   }
    velocidad=EEPROM.readInt(addressVelocity);
-   if(velocidad<1){
-    EEPROM.writeInt(addressVelocity, 1); 
-      EEPROM.commit();
-      velocidad=EEPROM.readInt(addressVelocity);
-   }
  Serial.print("La velocidad guardada es: ");
   Serial.println(velocidad);
 
@@ -474,9 +490,11 @@ if (!EEPROM.begin(1000)) {
   Serial.println("Opciones por serial:");
   Serial.println("a. calibrar.");
   Serial.println("r. rutina.");
-  Serial.println("<. movimiento adelante.");
-  Serial.println(">. movimiento de regreso.");
-  Serial.println("s. stop abrupto.");
+  Serial.println("<. mover CReloj.");
+  Serial.println(">. mover Reloj.");
+  Serial.println("+. mas rápido.");
+  Serial.println("-. mas lento.");
+  Serial.println("s. parar.");
   Serial.println("1. toggle relay 1.");
   Serial.println("2. toggle relay 2.");
 
@@ -494,6 +512,7 @@ if (!EEPROM.begin(1000)) {
     stepper->setDirectionPin(dirPinStepper);
     stepper->setEnablePin(enablePinStepper);
     //stepper->setAutoEnable(true);
+     stepper->enableOutputs();
 
     // If auto enable/disable need delays, just add (one or both):
      //stepper->setDelayToEnable(50);
@@ -520,85 +539,84 @@ void loop() {
     if (digitalRead(SensorComienzo) == LOW)
     {
       //brazo esta en pos inicial, zerow, buscar pos final
-      stepper->setSpeedInUs(velocidadCalibrar+(velocidad*50));  // the parameter is us/step !!!
+      stepper->setSpeedInUs(velocidadCalibrar);  // the parameter is us/step !!!
       stepper->setAcceleration(aceleracionCalibrar);
       stepper->runBackward();
       state = LookingForZero;
-      Serial.print("CalibrateStart LOW");
+      Serial.println("CalibrateStart LOW");
     }
     else
     {
       //buscar pos inicial
-      stepper->setSpeedInUs(velocidadCalibrar+(velocidad*50));  // the parameter is us/step !!!
+      stepper->setSpeedInUs(velocidadCalibrar);  // the parameter is us/step !!!
       stepper->setAcceleration(aceleracionCalibrar);
       stepper->runForward();
       
       state = BuscandoHome;
-      Serial.print("CalibrateStart HIGH");
+      Serial.println("CalibrateStart HIGH");
     }
   } else if (state == LookingForZero)
   {
     if (digitalRead(SensorComienzo) == HIGH)
     {
-      //stepper->setCurrentPosition(0);
-      HomePosition=stepper->getCurrentPosition();
+      Serial.print("encontro posicion 0 LookingForZeroHIGH: ");
+      Serial.println(stepper->getCurrentPosition());
+      stepper->setCurrentPosition(0);
+      PosicionInicial = -300;
+      Serial.print("esta posicion ahora es: ");
+      Serial.println(stepper->getCurrentPosition());
       state = LookingForEnd;
-      Serial.print("LookingForZero HIGH");
-      Serial.print("home position:>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> ");
-      Serial.println(HomePosition);
     }
   }
    else if (state == LookingForEnd)
   {
-    Serial.println("LookingForEnd");
+    //Serial.println("LookingForEnd");
     if (digitalRead(SensorFinal) == LOW)
     {
-          Serial.println("PosicionFinal guardada");
-              Serial.println(PosicionFinal);
-
-
-      PosicionFinal=stepper->getCurrentPosition();
+      PosicionFinal=stepper->getCurrentPosition()+200;
       stepper->stopMove();
-       Serial.print("PosicionFinal:>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> ");
-      Serial.println(PosicionFinal);
       state = Iddle;
-    posicionActial="enfinal";
     Serial.println("Done");
+    Serial.print("Posicion final: ");
+    Serial.println(PosicionFinal);
     notifyClients("calibrado");
-
+    estaEnInicio=false;
+    MueveAPosFinal();
     }
   }
   else if (state == BuscandoHome)
   {
-          //Serial.println("BuscandoHome");
-
+    //Serial.println("BuscandoHome");
     if (digitalRead(SensorComienzo) == LOW)
     {
       stepper->stopMove();
-
-      stepper->setSpeedInUs(velocidadCalibrar+(velocidad*50));  // the parameter is us/step !!!
+      stepper->setSpeedInUs(velocidadCalibrar);
       stepper->setAcceleration(aceleracionCalibrar);
       stepper->runBackward();
       state = LookingForZero;
-      Serial.print("BuscandoHome LOW");
-
+      Serial.println("BuscandoHome LOW");
     }
   }else if (state == RutinaHaciaHome)
   {
-    if(stepper->getCurrentPosition()>=HomePosition){
-      MueveAPosFinal();
-          Serial.println("1ra parte de RutinaHaciaHome completa");
-
-      state = Moviendo;
-    }
-  }else if (state == RutinaHaciaFinal)
-  {
-    if( stepper->getCurrentPosition()<=PosicionFinal){
-       MueveAPosInicial();
-      Serial.println("1ra parte de RutinaHaciaFinal completa");
-
-      state = Moviendo;
-    }
+    if(!estaEnInicio){
+    //Serial.print("diff: ");
+    //Serial.println(abs((abs(PosicionInicial)-abs(stepper->getCurrentPosition() )))<10 );
+        if(abs((abs(PosicionInicial)-abs(stepper->getCurrentPosition() )))<10 ){
+          MueveAPosFinal();
+          Serial.print("tardo: ");
+          Serial.println( millis() - StartTime);
+          state = Moviendo;
+        }
+      }else{
+        //Serial.print("diff: ");
+        //Serial.println(abs((abs(PosicionFinal)-abs(stepper->getCurrentPosition() )))<10 );
+        if(abs((abs(PosicionFinal)-abs(stepper->getCurrentPosition() )))<10 ){
+          MueveAPosInicial();
+          Serial.print("tardo: ");
+          Serial.println( millis() - StartTime);
+          state = Moviendo;
+        }
+      }
   }
 
   if (stepper) {
@@ -616,8 +634,7 @@ void loop() {
     user_input = Serial.read(); //Read user input and trigger appropriate function
 if (user_input == 's')
     {
-
-      stepper->forceStop();
+      stepper->stopMove();
     }
     else if (user_input == '<')
     {
@@ -631,6 +648,15 @@ if (user_input == 's')
         state= Moviendo;
       MueveAPosInicial();
       Serial.println("command PARAM_RETROCEDE ");
+    }else if (user_input == '+')
+    {
+        
+      Serial.println("mas rapido ");
+   
+    }
+    else if (user_input == '->')
+    {
+        Serial.println("mas lento ");
     }
     else if (user_input == 'a')
     {
@@ -645,7 +671,8 @@ if (user_input == 's')
     }
      else if (user_input == 'r')
     {
-     EmpiezaRutina();
+      state= Rutina;
+       MueveAPosFinal();
     }else
     {
       //Serial.println("Invalid option entered.");
